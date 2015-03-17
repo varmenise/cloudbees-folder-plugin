@@ -24,16 +24,31 @@
 
 package com.cloudbees.hudson.plugins.folder.relocate;
 
+import com.cloudbees.hudson.plugins.folder.Folder;
 import com.cloudbees.hudson.plugins.folder.Messages;
 import hudson.Extension;
+import hudson.model.AbstractDescribableImpl;
 import hudson.model.Action;
+import hudson.model.Descriptor;
 import hudson.model.Failure;
 import hudson.model.Item;
 import hudson.model.ItemGroup;
+import hudson.model.Items;
 import hudson.model.Job;
 import hudson.security.Permission;
 import hudson.security.PermissionScope;
 import hudson.util.HttpResponses;
+import jenkins.model.Jenkins;
+import jenkins.model.TransientActionFactory;
+import org.kohsuke.accmod.Restricted;
+import org.kohsuke.accmod.restrictions.NoExternalUse;
+import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
+import org.kohsuke.stapler.HttpResponse;
+import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.interceptor.RequirePOST;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -42,20 +57,12 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
-import jenkins.model.Jenkins;
-import jenkins.model.TransientActionFactory;
-import org.kohsuke.accmod.Restricted;
-import org.kohsuke.accmod.restrictions.NoExternalUse;
-import org.kohsuke.stapler.HttpResponse;
-import org.kohsuke.stapler.QueryParameter;
-import org.kohsuke.stapler.StaplerRequest;
-import org.kohsuke.stapler.interceptor.RequirePOST;
 
 /**
  * Does the actual work of relocating an item.
  */
 @Restricted(NoExternalUse.class)
-public class RelocationAction implements Action {
+public class RelocationFolderAction extends AbstractDescribableImpl<RelocationFolderAction> implements Action {
 
     /**
      * The permission required to move an item.
@@ -67,16 +74,46 @@ public class RelocationAction implements Action {
      */
     private final Item item;
 
+
+    private JobsInsideFolder jobsInsideFolder;
+
+
+    public JobsInsideFolder getJobsInsideFolder() {
+        return this.jobsInsideFolder;
+    }
+
+    @DataBoundSetter
+    public void setJobsInsideFolder() {
+        this.jobsInsideFolder = new JobsInsideFolder(getListOfJobsInsideFolder());
+
+    }
+
     /**
      * Creates an instance of this action.
      *
      * @param item the item that would be moved.
      */
-    public RelocationAction(Item item) {
+
+
+    @DataBoundConstructor
+
+    public RelocationFolderAction(Item item) {
+
         this.item = item;
+        setJobsInsideFolder();
+
     }
 
-    @Override public String getIconFileName() {
+    @Extension
+    public static class DescriptorImpl extends Descriptor<RelocationFolderAction> {
+        public String getDisplayName() {
+            return "RelocationFolderAction";
+        }
+    }
+
+
+    @Override
+    public String getIconFileName() {
         if (!item.hasPermission(RELOCATE)) {
             return null;
         }
@@ -89,12 +126,14 @@ public class RelocationAction implements Action {
         return null;
     }
 
-    @Override public String getDisplayName() {
-        return Messages.RelocateAction_displayName();
+    @Override
+    public String getDisplayName() {
+        return Messages.RelocateFolderAction_displayName();
     }
 
-    @Override public String getUrlName() {
-        return "move";
+    @Override
+    public String getUrlName() {
+        return "moveContent";
     }
 
     /**
@@ -108,7 +147,8 @@ public class RelocationAction implements Action {
 
     /**
      * Avoids a CCE caused by return type ambiguity in script access.
-     * @return {@link Item#getParent} of {@link #getItem}
+     *
+     * @return {@link hudson.model.Item#getParent} of {@link #getItem}
      */
     public ItemGroup<?> getItemParent() {
         return item.getParent();
@@ -134,60 +174,30 @@ public class RelocationAction implements Action {
      *
      * @return the list of jobs.
      */
-    public Collection<? extends Job> getJobsInsideFolder() {
-        Collection jobs= item.getAllJobs();
+    public Collection<? extends Job> getListOfJobsInsideFolder() {
+        Collection jobs = item.getAllJobs();
         return jobs;
     }
 
+    public Collection<? extends Items> getItemsInsideFolder() {
+        Collection items = ((Folder) item).getItems();
+        return items;
+
+    }
+
     public Job getJob(String name) {
-        Collection <? extends Job> jobs= getJobsInsideFolder();
-        for (Job job: jobs){
-            if(job.getName().equals(name)){
+        Collection<? extends Job> jobs = getListOfJobsInsideFolder();
+        for (Job job : jobs) {
+            if (job.getName().equals(name)) {
                 return job;
             }
         }
 
         return null;
     }
-    /**
-     * Does the move.
-     *
-     * @param req         the request.
-     * @param destination the destination.
-     * @return the response.
-     */
-    @RequirePOST
-    public HttpResponse doMove(StaplerRequest req, @QueryParameter String destination) throws IOException, InterruptedException {
-        item.checkPermission(RELOCATE);
-        ItemGroup dest = null;
-        for (ItemGroup itemGroup : getDestinations()) {
-            if (("/" + itemGroup.getFullName()).equals(destination)) {
-                dest = itemGroup;
-                break;
-            }
-        }
-        if (dest == null || dest == item.getParent()) {
-            return HttpResponses.forwardToPreviousPage();
-        }
-        List<RelocationHandler> chain = new ArrayList<RelocationHandler>();
-        for (RelocationHandler handler : Jenkins.getInstance().getExtensionList(RelocationHandler.class)) {
-            if (handler.applicability(item) != RelocationHandler.HandlingMode.SKIP) {
-                chain.add(handler);
-            }
-        }
-        if (chain.isEmpty()) {
-            return new Failure("no known way to handle " + item);
-        }
-        HttpResponse response = chain.get(0).handle(item, dest, new AtomicReference<Item>(), chain.subList(1, chain.size()));
-        if (response != null) {
-            return response;
-        } else {
-            return HttpResponses.forwardToPreviousPage();
-        }
-    }
 
     /**
-     * Does the move of specific jobs.
+     * Does the move.
      *
      * @param req         the request.
      * @param destination the destination.
@@ -217,11 +227,10 @@ public class RelocationAction implements Action {
         }
 
 
-        HttpResponse globalResponse=null;
+        HttpResponse globalResponse = null;
 
 
-
-        if(req.hasParameter("jobToMove")) {
+        if (req.hasParameter("jobToMove")) {
 
             for (final String jobToMove : Arrays.asList(req.getParameterValues("jobToMove"))) {
                 Item itemToMove = this.getJob(jobToMove);
@@ -234,34 +243,34 @@ public class RelocationAction implements Action {
         }
 
 
-
-        if(globalResponse!=null){
+        if (globalResponse != null) {
             return globalResponse;
-        }
-        else {
+        } else {
             return HttpResponses.forwardToPreviousPage();
         }
 
     }
 
     /**
-     * Makes sure that {@link Item}s have the action.
+     * Makes sure that {@link hudson.model.Item}s have the action.
      */
     @Extension
-    public static class TransientActionFactoryImpl extends TransientActionFactory<Item> {
+    public static class TransientActionFactoryImpl extends TransientActionFactory<Folder> {
 
         static {
             RELOCATE.getId(); // ensure loaded eagerly
         }
 
-        @Override public Class<Item> type() {
-            return Item.class;
+        @Override
+        public Class<Folder> type() {
+            return Folder.class;
         }
 
         @Override
-        public Collection<? extends Action> createFor(Item target) {
-            return Collections.singleton(new RelocationAction(target));
+        public Collection<? extends Action> createFor(Folder target) {
+            return Collections.singleton(new RelocationFolderAction(target));
         }
     }
+
 
 }
