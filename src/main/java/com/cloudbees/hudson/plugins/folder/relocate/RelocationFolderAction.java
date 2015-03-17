@@ -75,18 +75,6 @@ public class RelocationFolderAction extends AbstractDescribableImpl<RelocationFo
     private final Item item;
 
 
-    private JobsInsideFolder jobsInsideFolder;
-
-
-    public JobsInsideFolder getJobsInsideFolder() {
-        return this.jobsInsideFolder;
-    }
-
-    @DataBoundSetter
-    public void setJobsInsideFolder() {
-        this.jobsInsideFolder = new JobsInsideFolder(getListOfJobsInsideFolder());
-
-    }
 
     /**
      * Creates an instance of this action.
@@ -100,7 +88,6 @@ public class RelocationFolderAction extends AbstractDescribableImpl<RelocationFo
     public RelocationFolderAction(Item item) {
 
         this.item = item;
-        setJobsInsideFolder();
 
     }
 
@@ -174,7 +161,7 @@ public class RelocationFolderAction extends AbstractDescribableImpl<RelocationFo
      *
      * @return the list of jobs.
      */
-    public Collection<? extends Job> getListOfJobsInsideFolder() {
+    public Collection<? extends Job> getJobsInsideFolder() {
         Collection jobs = item.getAllJobs();
         return jobs;
     }
@@ -186,7 +173,7 @@ public class RelocationFolderAction extends AbstractDescribableImpl<RelocationFo
     }
 
     public Job getJob(String name) {
-        Collection<? extends Job> jobs = getListOfJobsInsideFolder();
+        Collection<? extends Job> jobs = getJobsInsideFolder();
         for (Job job : jobs) {
             if (job.getName().equals(name)) {
                 return job;

@@ -4,12 +4,48 @@
     <st:include page="sidepanel.jelly" it="${it.item}"/>
     <l:main-panel>
       <h1><img src="${resURL}/plugin/cloudbees-folder/images/48x48/move.png" alt=""/>${%Move}</h1>
-      <form method="post" action="moveContent">
-        ${%blurb(it.item.pronoun, it.item.displayName)}
+       <form method="post" action="moveContent">
         <table>
-         <f:optionalProperty field="jobsInsideFolder" title="Enable Configuration"/>
-        </table>
-      </form>
+          <f:optionalBlock name="jobsSelected" title="expand jobs in folder">
+            <j:forEach var="job" items="${it.jobsInsideFolder}">
+              <tr>
+                <td></td><td colspan="3"><f:checkbox name="jobToMove" title="${job.name}" value="${job.name}"/></td>
+              </tr>
+            </j:forEach>
+            <f:entry>
+            ${%blurb_1(it.item.pronoun, it.item.displayName)}
+            </f:entry>
+            <f:entry field="select Destination" title="Select Destination">
+              <select name="destination" class="select setting-input">
+                <j:forEach var="destination" items="${it.destinations}">
+                  <j:if test="${destination == it.itemParent}">
+                    <j:if test="${destination == app}">
+                      <option selected="yes" value="/${destination.fullName}">${app.displayName}</option>
+                    </j:if>
+                    <j:if test="${destination != app}">
+                      <option selected="yes" value="/${destination.fullName}">${app.displayName} &#187;
+                        ${destination.fullDisplayName}
+                      </option>
+                    </j:if>
+                   </j:if>
+                   <j:if test="${destination != it.itemParent}">
+                    <j:if test="${destination == app}">
+                      <option value="/${destination.fullName}">${app.displayName}</option>
+                    </j:if>
+                    <j:if test="${destination != app}">
+                      <option value="/${destination.fullName}">${app.displayName} &#187; ${destination.fullDisplayName}
+                      </option>
+                    </j:if>
+                  </j:if>
+                </j:forEach>
+              </select>
+            </f:entry>
+            <f:bottomButtonBar>
+              <f:submit value="${%Move}"/>
+            </f:bottomButtonBar>
+          </f:optionalBlock>
+         </table>
+        </form>
     </l:main-panel>
   </l:layout>
 </j:jelly>
